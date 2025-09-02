@@ -20,6 +20,7 @@ type Influencer = {
   main_audience_age_range: string;
   main_audience_gender?: 'male' | 'female' | 'mixed';
   is_verified?: boolean;
+  avatarUrl?: string | null;            // 프로필 이미지 링크 (있으면 사용)
 };
 
 type QueryParams = {
@@ -43,6 +44,7 @@ type ServerDiscoverItem = {
   main_audience_gender?: 'F' | 'M';
   main_audience_age_range?: '18-24' | '25-34' | '35-44';
   is_verified?: boolean;
+  profile_img_link?: string | null;
 };
 
 type ServerDiscoverResponse = {
@@ -58,11 +60,11 @@ const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === '1';
 
 /* ===================== 목 데이터 ===================== */
 const MOCK_ITEMS: Influencer[] = [
-  { id: '1', handle: '@instagram',   followers: 694_391_240, avg_feed_like: 3_000_000, real_engagement: 283_311_625, er: 0.002,  last_upload_days: 3, main_audience_age_range: '18-24', main_audience_gender: 'mixed',  is_verified: true },
-  { id: '2', handle: '@cristiano',   followers: 663_491_330, avg_feed_like: 2_500_000, real_engagement: 175_070_524, er: 0.0099, last_upload_days: 3, main_audience_age_range: '18-24', main_audience_gender: 'male',   is_verified: true },
-  { id: '3', handle: '@leomessi',    followers: 506_278_633, avg_feed_like: 2_000_000, real_engagement: 139_724_247, er: 0.0075, last_upload_days: 5, main_audience_age_range: '18-24', main_audience_gender: 'male',   is_verified: true },
-  { id: '4', handle: '@selenagomez', followers: 417_656_566, avg_feed_like: 1_500_000, real_engagement: 205_487_030, er: 0.0068, last_upload_days: 4, main_audience_age_range: '18-24', main_audience_gender: 'female', is_verified: true },
-  { id: '5', handle: '@kyliejenner', followers: 392_960_306, avg_feed_like: 1_400_000, real_engagement: 174_474_375, er: 0.0058, last_upload_days: 5, main_audience_age_range: '25-34', main_audience_gender: 'female', is_verified: true },
+  { id: '1', handle: '@instagram',   followers: 694_391_240, avg_feed_like: 3_000_000, real_engagement: 283_311_625, er: 0.002,  last_upload_days: 3, main_audience_age_range: '18-24', main_audience_gender: 'mixed',  is_verified: true,  avatarUrl: null },
+  { id: '2', handle: '@cristiano',   followers: 663_491_330, avg_feed_like: 2_500_000, real_engagement: 175_070_524, er: 0.0099, last_upload_days: 3, main_audience_age_range: '18-24', main_audience_gender: 'male',   is_verified: true,  avatarUrl: null },
+  { id: '3', handle: '@leomessi',    followers: 506_278_633, avg_feed_like: 2_000_000, real_engagement: 139_724_247, er: 0.0075, last_upload_days: 5, main_audience_age_range: '18-24', main_audience_gender: 'male',   is_verified: true,  avatarUrl: null },
+  { id: '4', handle: '@selenagomez', followers: 417_656_566, avg_feed_like: 1_500_000, real_engagement: 205_487_030, er: 0.0068, last_upload_days: 4, main_audience_age_range: '18-24', main_audience_gender: 'female', is_verified: true,  avatarUrl: null },
+  { id: '5', handle: '@kyliejenner', followers: 392_960_306, avg_feed_like: 1_400_000, real_engagement: 174_474_375, er: 0.0058, last_upload_days: 5, main_audience_age_range: '25-34', main_audience_gender: 'female', is_verified: true,  avatarUrl: null },
 ];
 
 /* ===================== 유틸 ===================== */
@@ -70,9 +72,7 @@ function toNum(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
-function cryptoRandomId() {
-  return Math.random().toString(36).slice(2);
-}
+function cryptoRandomId() { return Math.random().toString(36).slice(2); }
 
 /* ===================== 목 쿼리 ===================== */
 function mockQuery(params: QueryParams) {
@@ -172,7 +172,6 @@ function mapToServerParams(params: QueryParams) {
 
   if (main_audience_age_range)           qobj.main_audience_age_range = main_audience_age_range;
 
-  // 내부 'male'|'female' → 서버 'M'|'F'
   if (main_audience_gender === 'male')   qobj.main_audience_gender = 'M';
   if (main_audience_gender === 'female') qobj.main_audience_gender = 'F';
 
@@ -191,12 +190,13 @@ function mapServerItemToInfluencer(row: ServerDiscoverItem): Influencer {
     handle: row?.username ? `@${row.username}` : '@unknown',
     followers: toNum(row?.follower),
     avg_feed_like: toNum(row?.avg_feed_like),
-    real_engagement: toNum(row?.real_follower),               // 표 “예상 유효 팔로워수”
+    real_engagement: toNum(row?.real_follower),
     er: row?.real_engagement != null ? Number(row.real_engagement) : undefined,
     last_upload_days: undefined,
     main_audience_age_range: row?.main_audience_age_range ?? '',
     main_audience_gender: gender,
     is_verified: Boolean(row?.is_verified),
+    avatarUrl: row?.profile_img_link ?? null,
   };
 }
 
@@ -224,6 +224,59 @@ async function fetchInfluencers(params: QueryParams) {
     catch (e) { console.warn('remote failed, use mock:', e); }
   }
   return mockQuery(params);
+}
+
+/* ===================== 작은 UI 컴포넌트(아이콘/아바타) ===================== */
+function BookmarkIcon({ filled }: { filled?: boolean }) {
+  return filled ? (
+    // filled bookmark
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+      <path d="M6 2h12a1 1 0 0 1 1 1v18l-7-4-7 4V3a1 1 0 0 1 1-1z" fill="#111"/>
+    </svg>
+  ) : (
+    // outline bookmark
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+      <path d="M6 2h12a1 1 0 0 1 1 1v18l-7-4-7 4V3a1 1 0 0 1 1-1z" fill="none" stroke="#444" strokeWidth="1.5"/>
+    </svg>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="5" cy="12" r="1.6" fill="#666"/><circle cx="12" cy="12" r="1.6" fill="#666"/><circle cx="19" cy="12" r="1.6" fill="#666"/>
+    </svg>
+  );
+}
+
+function ExternalIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
+      <path d="M14 3h7v7h-2V6.414l-8.293 8.293-1.414-1.414L17.586 5H14V3z" fill="#666"/>
+      <path d="M5 5h6v2H7v10h10v-4h2v6H5V5z" fill="#666"/>
+    </svg>
+  );
+}
+
+function VerifiedBadge() {
+  // 인스타 느낌의 파란 체크
+  return (
+    <span title="Verified" style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:16, height:16, borderRadius:'50%', background:'#2096F3', color:'#fff', marginRight:6, fontSize:11 }}>
+      ✓
+    </span>
+  );
+}
+
+function CircleAvatar({ src, alt }: { src?: string | null; alt?: string }) {
+  const common: React.CSSProperties = {
+    width: 28, height: 28, borderRadius: '50%',
+    background: '#eee', display: 'inline-block', overflow: 'hidden',
+    marginRight: 8, verticalAlign: 'middle',
+  };
+  if (src) {
+    return <img src={src} alt={alt ?? ''} style={common} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />;
+  }
+  return <span style={common} aria-hidden />;
 }
 
 /* ===================== 페이지 컴포넌트 ===================== */
@@ -400,8 +453,7 @@ export default function Page() {
                       {label}{sortField === key ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
                     </th>
                   ))}
-                  <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left', padding: 8 }}>인증</th>
-                  <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left', padding: 8 }}>나중에보기</th>
+                  {/* 인증 / 나중에보기 컬럼 제거됨 */}
                 </tr>
               </thead>
               <tbody>
@@ -413,17 +465,39 @@ export default function Page() {
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
                         <input type="checkbox" checked={checked} onChange={() => toggleSelectOne(it.id)} />
                       </td>
-                      <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.handle}</td>
+
+                      {/* 계정 셀: 아바타 + (인증배지) + 핸들 + 액션 3개(가운데가 북마크) */}
+                      <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <CircleAvatar src={it.avatarUrl ?? undefined} alt={it.handle} />
+                          {it.is_verified && <VerifiedBadge />}
+                          <span style={{ fontWeight: 500, marginRight: 10 }}>{it.handle}</span>
+
+                          <div style={{ display:'inline-flex', gap:6 }}>
+                            <button title="더보기" style={iconBtnStyle} onClick={() => { /* TODO: 더보기 */ }}>
+                              <DotsIcon />
+                            </button>
+                            <button
+                              title={watched ? '나중에보기 해제' : '나중에보기 추가'}
+                              style={iconBtnStyle}
+                              onClick={() => toggleWatchAndSync(it.id)}
+                              aria-pressed={watched}
+                            >
+                              <BookmarkIcon filled={watched} />
+                            </button>
+                            <button title="외부 열기" style={iconBtnStyle} onClick={() => { /* TODO: 외부 링크 */ }}>
+                              <ExternalIcon />
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.followers.toLocaleString()}</td>
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.avg_feed_like.toLocaleString()}</td>
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.real_engagement.toLocaleString()}</td>
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.er !== undefined ? (it.er * 100).toFixed(2) + ' %' : '—'}</td>
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.last_upload_days !== undefined ? `${it.last_upload_days}일 전` : '—'}</td>
                       <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.main_audience_age_range}</td>
-                      <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>{it.is_verified ? '✅' : '—'}</td>
-                      <td style={{ borderBottom: '1px solid #f0f0f0', padding: 8 }}>
-                        <button onClick={() => toggleWatchAndSync(it.id)}>{watched ? '해제' : '추가'}</button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -447,3 +521,15 @@ export default function Page() {
     </div>
   );
 }
+
+/* 아이콘 버튼 공통 스타일 */
+const iconBtnStyle: React.CSSProperties = {
+  width: 24, height: 24,
+  display: 'inline-flex',
+  alignItems: 'center', justifyContent: 'center',
+  border: '1px solid #ddd',
+  borderRadius: 6,
+  background: '#fff',
+  padding: 0,
+  cursor: 'pointer'
+};
